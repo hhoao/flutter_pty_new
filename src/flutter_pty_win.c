@@ -18,7 +18,8 @@ static LPWSTR build_command(char *executable, char **arguments)
 
     if (arguments != NULL)
     {
-        int i = 0;
+        // argv[0] duplicates [executable]; only append argv[1..].
+        int i = 1;
 
         while (arguments[i] != NULL)
         {
@@ -47,7 +48,7 @@ static LPWSTR build_command(char *executable, char **arguments)
 
         if (arguments != NULL)
         {
-            int j = 0;
+            int j = 1;
 
             while (arguments[j] != NULL)
             {

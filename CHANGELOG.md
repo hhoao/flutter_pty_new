@@ -1,3 +1,6 @@
+## 0.4.3
+* Fix Windows command line duplicating executable name in [Pty.start] (TerminalStudio/flutter_pty#19).
+
 ## 0.4.2
 * Fix Linux compile error, thanks [@mengyanshou].
 
