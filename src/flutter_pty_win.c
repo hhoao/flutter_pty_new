@@ -7,13 +7,78 @@
 #include "include/dart_api_dl.h"
 #include "include/dart_native_api.h"
 
+static BOOL arg_needs_quoting(const char *arg)
+{
+    if (arg == NULL || arg[0] == '\0')
+    {
+        return TRUE;
+    }
+
+    for (int i = 0; arg[i] != 0; i++)
+    {
+        if (arg[i] == ' ' || arg[i] == '\t' || arg[i] == '"')
+        {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+static int quoted_arg_length(const char *arg)
+{
+    int length = (int)strlen(arg);
+
+    if (!arg_needs_quoting(arg))
+    {
+        return length;
+    }
+
+    length += 2;
+
+    for (int i = 0; arg[i] != 0; i++)
+    {
+        if (arg[i] == '"')
+        {
+            length++;
+        }
+    }
+
+    return length;
+}
+
+static void append_command_arg(LPWSTR command, int *pos, const char *arg)
+{
+    BOOL quote = arg_needs_quoting(arg);
+
+    if (quote)
+    {
+        command[(*pos)++] = L'"';
+    }
+
+    for (int j = 0; arg[j] != 0; j++)
+    {
+        if (quote && arg[j] == '"')
+        {
+            command[(*pos)++] = L'\\';
+        }
+
+        command[(*pos)++] = (WCHAR)arg[j];
+    }
+
+    if (quote)
+    {
+        command[(*pos)++] = L'"';
+    }
+}
+
 static LPWSTR build_command(char *executable, char **arguments)
 {
     int command_length = 0;
 
     if (executable != NULL)
     {
-        command_length += (int)strlen(executable);
+        command_length += quoted_arg_length(executable);
     }
 
     if (arguments != NULL)
@@ -23,7 +88,7 @@ static LPWSTR build_command(char *executable, char **arguments)
 
         while (arguments[i] != NULL)
         {
-            command_length += (int)strlen(arguments[i]) + 1;
+            command_length += quoted_arg_length(arguments[i]) + 1;
             i++;
         }
     }
@@ -32,19 +97,9 @@ static LPWSTR build_command(char *executable, char **arguments)
 
     if (command != NULL)
     {
-        int i = 0;
+        int pos = 0;
 
-        if (executable != NULL)
-        {
-            int j = 0;
-
-            while (executable[j] != 0)
-            {
-                command[i] = (WCHAR)executable[j];
-                i++;
-                j++;
-            }
-        }
+        append_command_arg(command, &pos, executable);
 
         if (arguments != NULL)
         {
@@ -52,22 +107,13 @@ static LPWSTR build_command(char *executable, char **arguments)
 
             while (arguments[j] != NULL)
             {
-                command[i++] = ' ';
-
-                int k = 0;
-
-                while (arguments[j][k] != 0)
-                {
-                    command[i] = (WCHAR)arguments[j][k];
-                    i++;
-                    k++;
-                }
-
+                command[pos++] = L' ';
+                append_command_arg(command, &pos, arguments[j]);
                 j++;
             }
         }
 
-        command[i] = 0;
+        command[pos] = 0;
     }
 
     return command;
