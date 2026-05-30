@@ -409,8 +409,6 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     PROCESS_INFORMATION processInfo;
     ZeroMemory(&processInfo, sizeof(processInfo));
 
-    Sleep(1000);
-
     ok = CreateProcessW(NULL,
                         command,
                         NULL,
