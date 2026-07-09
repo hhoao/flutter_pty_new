@@ -183,7 +183,11 @@ class Pty {
 
   /// True when the foreground process group is not the shell's own group.
   ///
-  /// Heuristic: compares [foregroundPgid] to the shell [pid]'s process group.
+  /// Provisional heuristic: compares `[foregroundPgid] != [pid]`, assuming the
+  /// shell is its process-group leader so its pgid equals [pid] (often true
+  /// after forkpty, not always). Task 3 will compare against a stored shell
+  /// pgid when `pid != pgid`.
+  ///
   /// Returns `null` when the platform cannot answer (e.g. Windows Phase A).
   ///
   /// Caveats: job control off, interactive TUIs that stay in the shell pgid,
