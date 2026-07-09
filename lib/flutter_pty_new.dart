@@ -5,9 +5,9 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_pty/src/flutter_pty_bindings_generated.dart';
+import 'package:flutter_pty_new/src/flutter_pty_bindings_generated.dart';
 
-const _libName = 'flutter_pty';
+const _libName = 'flutter_pty_new';
 
 final DynamicLibrary _dylib = () {
   if (Platform.isMacOS || Platform.isIOS) {

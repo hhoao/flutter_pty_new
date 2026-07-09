@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_pty_new/flutter_pty_new.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String get shell {
