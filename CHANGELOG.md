@@ -1,4 +1,5 @@
-## 0.5.0
+## 1.0.0
+* First release under the `flutter_pty_new` package name (fork of flutter_pty).
 * Add `masterFd`, `foregroundPgid`, `shellPgid`, `isForegroundProcessRunning`, and
   `foregroundProcessRunningChanges` (Unix/Android; Windows returns null).
 * Document foreground-detection platform limits in README.
