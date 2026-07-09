@@ -121,7 +121,9 @@ EOF
 - Modify: `android/build.gradle`, `android/settings.gradle`, `android/src/main/AndroidManifest.xml` (if package refs)
 - Rename/modify: `ios/flutter_pty.podspec` → `ios/flutter_pty_new.podspec` (and `s.name`)
 - Rename/modify: `macos/flutter_pty.podspec` → `macos/flutter_pty_new.podspec`
-- Modify: `linux/CMakeLists.txt`, `windows/CMakeLists.txt`
+- Modify: `src/CMakeLists.txt` — rename target `flutter_pty` → `flutter_pty_new`, `OUTPUT_NAME "flutter_pty_new"`
+- Modify: `linux/CMakeLists.txt`, `windows/CMakeLists.txt` — `PROJECT_NAME`, `flutter_pty_new_bundled_libraries`, `$<TARGET_FILE:flutter_pty_new>`
+- Source filenames (`src/flutter_pty.c`, pod `Classes/flutter_pty.c`) may stay; only produced dylib/plugin IDs must change.
 - Modify: example android/ios applicationId / plugin registrant if they hardcode old name
 
 - [ ] **Step 1: Android**
@@ -138,9 +140,31 @@ git mv macos/flutter_pty.podspec macos/flutter_pty_new.podspec
 
 Set `s.name = 'flutter_pty_new'` in both. Update any podspec references in example Podfiles if present.
 
-- [ ] **Step 3: CMake**
+- [ ] **Step 3: CMake (required for FFI load)**
 
-Ensure the produced library basename is `flutter_pty_new` (matches Dart `_libName`: `libflutter_pty_new.so` / `.dll` / `.framework`).
+In `src/CMakeLists.txt`:
+
+```cmake
+add_library(flutter_pty_new SHARED "flutter_pty.c")
+set_target_properties(flutter_pty_new PROPERTIES
+  PUBLIC_HEADER flutter_pty.h
+  OUTPUT_NAME "flutter_pty_new"
+)
+target_compile_definitions(flutter_pty_new PUBLIC DART_SHARED_LIB)
+# Android 16k page link option: target flutter_pty_new
+```
+
+In `linux/CMakeLists.txt` and `windows/CMakeLists.txt`:
+
+```cmake
+set(PROJECT_NAME "flutter_pty_new")
+set(flutter_pty_new_bundled_libraries
+  $<TARGET_FILE:flutter_pty_new>
+  PARENT_SCOPE
+)
+```
+
+Flutter tooling expects the bundled_libraries variable name to match the plugin/package name.
 
 - [ ] **Step 4: Smoke test Linux**
 
@@ -216,13 +240,19 @@ Adapt to this repo (same version-bump → `v{version}` → dispatch `publish.yml
 
 - [ ] **Step 2: Create publish.yml**
 
-Simpler than alacritty (no rust_lib check, no strip overrides unless present):
+Must support both tag push **and** `workflow_dispatch` (auto-tag uses `GITHUB_TOKEN`, which does not trigger `on.push.tags` on other workflows — same reason alacritty dispatches `release.yml`).
 
 ```yaml
 name: Publish to pub.dev
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v1.0.0). Leave empty to use github.ref."
+        required: false
+        default: ""
 permissions:
   contents: read
 jobs:
@@ -232,11 +262,19 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260
       - uses: flutter-actions/setup-flutter@18c66a64fb6f6d3338c63cabbc5cd6da395e7f1d
       - run: dart pub get
       - run: dart pub publish --dry-run
       - run: dart pub publish -f
+```
+
+Auto-tag’s dispatch step must call `publish.yml` (not alacritty’s `release.yml`):
+
+```bash
+gh workflow run publish.yml --repo "${{ github.repository }}" --ref "$tag"
 ```
 
 - [ ] **Step 3: Write PUBLISHING.md**
@@ -287,20 +325,17 @@ Replace path dep with:
 flutter_pty_new: ^1.0.0
 ```
 
-For local verification before publish, temporarily use path override in `dependency_overrides` only if needed — **remove before merge**. Prefer:
+For local verification before `1.0.0` is on pub.dev, add an absolute path override (relative `../../flutter_pty/...` from `.worktrees/pty-foreground` is wrong):
 
 ```yaml
 dependency_overrides:
+  rust_lib_flutter_alacritty:
+    path: packages/rust_lib_flutter_alacritty
   flutter_pty_new:
-    path: ../../flutter_pty/.worktrees/flutter-pty-optimization
+    path: /home/hhoa/git/hhoa/flutter_pty/.worktrees/flutter-pty-optimization
 ```
 
-while developing, then strip for the final commit that is merge-ready — OR keep path override only in a local uncommitted state. **Mergeable commit must use version constraint only** (plus existing rust_lib path override pattern is already stripped by CI).
-
-Practical approach for this task:
-1. Use `flutter_pty_new: ^1.0.0` in dependencies.
-2. Add `dependency_overrides` path for local tests (CI publish already strips all overrides).
-3. Ensure description text no longer says only `flutter_pty`.
+CI publish already strips all `dependency_overrides`. Keep the flutter_pty_new path override on the feature branch until pub.dev has `1.0.0`; then drop it. Ensure description text mentions `flutter_pty_new`.
 
 - [ ] **Step 2: Update imports**
 
@@ -337,7 +372,21 @@ EOF
 
 - [ ] **Step 1: Add flutter_pty_new version check**
 
-Mirror the rust_lib curl check: parse `flutter_pty_new: ^X.Y.Z` from pubspec and require pub.dev API success.
+Copy the existing rust_lib python+curl block and adapt:
+
+```python
+m = re.search(
+    r'^\s*flutter_pty_new:\s*\^?([0-9]+\.[0-9]+\.[0-9]+)',
+    text,
+    re.M,
+)
+```
+
+```bash
+curl -fsS "https://pub.dev/api/packages/flutter_pty_new/versions/${version}"
+```
+
+Add this check in both `publish.yml` and `release.yml`'s `publish-pubdev` job (alongside rust_lib).
 
 - [ ] **Step 2: Update PUBLISHING.md order**
 
