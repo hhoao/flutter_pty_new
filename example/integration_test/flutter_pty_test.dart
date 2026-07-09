@@ -196,7 +196,8 @@ void main() {
     await collector.waitForFirstChunk();
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(pty.isForegroundProcessRunning, isFalse);
-    pty.kill();
+    pty.kill(ProcessSignal.sigkill);
+    await pty.exitCode;
   });
 
   test('Pty.isForegroundProcessRunning is true while sleep runs', () async {

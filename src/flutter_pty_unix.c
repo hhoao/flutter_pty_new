@@ -194,23 +194,10 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
     handle->ptm = ptm;
     handle->pid = pid;
-    /* forkpty's child becomes session/pgroup leader asynchronously; wait
-     * briefly so we don't capture the parent's pgid. */
-    {
-        int shell_pgid = pid;
-        for (int i = 0; i < 100; ++i) {
-            pid_t pgid = getpgid(pid);
-            if (pgid == pid) {
-                shell_pgid = (int)pgid;
-                break;
-            }
-            if (pgid < 0) {
-                break;
-            }
-            usleep(1000);
-        }
-        handle->shell_pgid = shell_pgid;
-    }
+    /* After forkpty/setsid the child is its own session/pgroup leader, so
+     * shell pgid equals pid. Do not call getpgid here: it can still observe
+     * the parent's group before the child finishes setsid. */
+    handle->shell_pgid = pid;
     pthread_mutex_init(&handle->mutex, NULL);
     handle->ackRead = options->ackRead;
 
@@ -257,11 +244,17 @@ FFI_PLUGIN_EXPORT char *pty_error(void)
 
 FFI_PLUGIN_EXPORT int pty_get_master_fd(PtyHandle *handle)
 {
+    if (handle == NULL) {
+        return -1;
+    }
     return handle->ptm;
 }
 
 FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle)
 {
+    if (handle == NULL) {
+        return -1;
+    }
     pid_t pgid = tcgetpgrp(handle->ptm);
     if (pgid < 0) {
         return -1;
