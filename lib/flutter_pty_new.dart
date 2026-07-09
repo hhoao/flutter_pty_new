@@ -5,9 +5,9 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter_pty/src/flutter_pty_bindings_generated.dart';
+import 'package:flutter_pty_new/src/flutter_pty_bindings_generated.dart';
 
-const _libName = 'flutter_pty';
+const _libName = 'flutter_pty_new';
 
 final DynamicLibrary _dylib = () {
   if (Platform.isMacOS || Platform.isIOS) {
@@ -168,6 +168,57 @@ class Pty {
 
   /// The process id of the process running in the pseudo-terminal.
   int get pid => _bindings.pty_getpid(_handle);
+
+  /// POSIX master fd, or `null` on Windows / error.
+  int? get masterFd {
+    final fd = _bindings.pty_get_master_fd(_handle);
+    return fd < 0 ? null : fd;
+  }
+
+  /// Foreground process group id, or `null` if unavailable.
+  int? get foregroundPgid {
+    final pgid = _bindings.pty_get_foreground_pgid(_handle);
+    return pgid < 0 ? null : pgid;
+  }
+
+  /// Shell process group id captured at spawn, or `null` if unavailable.
+  int? get shellPgid {
+    final pgid = _bindings.pty_get_shell_pgid(_handle);
+    return pgid < 0 ? null : pgid;
+  }
+
+  /// True when the foreground process group is not the shell's own group.
+  ///
+  /// Compares [foregroundPgid] to [shellPgid] (the process group recorded at
+  /// spawn). When a foreground job is running, the PTY's foreground pgid
+  /// differs from the shell's.
+  ///
+  /// Returns `null` when the platform cannot answer (e.g. Windows).
+  ///
+  /// Caveats: job control off, interactive TUIs that stay in the shell pgid,
+  /// and Windows (unsupported) may not report accurately.
+  bool? get isForegroundProcessRunning {
+    final fg = foregroundPgid;
+    final shell = shellPgid;
+    if (fg == null || shell == null) return null;
+    return fg != shell;
+  }
+
+  /// Polls [isForegroundProcessRunning] every [interval].
+  /// Emits only on change. Cancelling the subscription stops the timer.
+  Stream<bool> foregroundProcessRunningChanges({
+    Duration interval = const Duration(milliseconds: 150),
+  }) async* {
+    bool? last;
+    while (true) {
+      final current = isForegroundProcessRunning;
+      if (current != null && current != last) {
+        last = current;
+        yield current;
+      }
+      await Future<void>.delayed(interval);
+    }
+  }
 
   /// Write data to the pseudo-terminal.
   void write(Uint8List data) {

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_pty_new/flutter_pty_new.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

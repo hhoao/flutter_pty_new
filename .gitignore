@@ -29,3 +29,6 @@
 build/
 
 .vscode
+
+# Git worktrees (local agent/feature isolation)
+.worktrees/

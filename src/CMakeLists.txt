@@ -5,18 +5,18 @@ cmake_minimum_required(VERSION 3.10)
 
 project(flutter_pty_library VERSION 0.0.1 LANGUAGES C)
 
-add_library(flutter_pty SHARED
+add_library(flutter_pty_new SHARED
   "flutter_pty.c"
 )
 
-set_target_properties(flutter_pty PROPERTIES
+set_target_properties(flutter_pty_new PROPERTIES
   PUBLIC_HEADER flutter_pty.h
-  OUTPUT_NAME "flutter_pty"
+  OUTPUT_NAME "flutter_pty_new"
 )
 
-target_compile_definitions(flutter_pty PUBLIC DART_SHARED_LIB)
+target_compile_definitions(flutter_pty_new PUBLIC DART_SHARED_LIB)
 
 if (ANDROID)
   # Support Android 15 16k page size.
-  target_link_options(flutter_pty PRIVATE "-Wl,-z,max-page-size=16384")
+  target_link_options(flutter_pty_new PRIVATE "-Wl,-z,max-page-size=16384")
 endif()

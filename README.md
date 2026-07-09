@@ -1,7 +1,7 @@
-# flutter_pty
+# flutter_pty_new
 
-[![ci](https://github.com/TerminalStudio/flutter_pty/actions/workflows/ci.yml/badge.svg)](https://github.com/TerminalStudio/flutter_pty/actions/workflows/ci.yml)
-[![pub points](https://badges.bar/flutter_pty/pub%20points)](https://pub.dev/packages/flutter_pty)
+[![ci](https://github.com/hhoao/flutter_pty_new/actions/workflows/ci.yml/badge.svg)](https://github.com/hhoao/flutter_pty_new/actions/workflows/ci.yml)
+[![pub points](https://badges.bar/flutter_pty_new/pub%20points)](https://pub.dev/packages/flutter_pty_new)
 
 
 This is an experimental package to explore the possibilities of using native
@@ -18,7 +18,7 @@ more stable than the current implementation ([pty](https://pub.dev/packages/pty)
 ## Quick start
 
 ```dart
-import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_pty_new/flutter_pty_new.dart';
 
 final pty = Pty.start('bash');
 
@@ -30,6 +30,21 @@ pty.resize(30, 80);
 
 pty.kill();
 ```
+
+## Foreground detection
+
+On Linux, macOS, and Android, `Pty` can report whether a foreground job is
+running via POSIX `tcgetpgrp` on the master fd:
+
+- `masterFd` — POSIX master file descriptor
+- `foregroundPgid` — current foreground process group
+- `shellPgid` — shell process group captured at spawn
+- `isForegroundProcessRunning` — `true` when `foregroundPgid != shellPgid`
+- `foregroundProcessRunningChanges` — polls and emits on change
+
+This is a heuristic only. Shells without job control (for example toybox `sh`
+on some Android images) may always appear idle. Windows returns `null` for
+these APIs in this release (ConPTY has no `tcgetpgrp`).
 
 ---
 
@@ -103,15 +118,14 @@ Regenerate the bindings by running `flutter pub run ffigen --config ffigen.yaml`
 ## Invoking native code
 
 Very short-running native functions can be directly invoked from any isolate.
-For example, see `sum` in `lib/flutter_pty.dart`.
+For example, see `sum` in `lib/flutter_pty_new.dart`.
 
 Longer-running functions should be invoked on a helper isolate to avoid
 dropping frames in Flutter applications.
-For example, see `sumAsync` in `lib/flutter_pty.dart`.
+For example, see `sumAsync` in `lib/flutter_pty_new.dart`.
 
 ## Flutter help
 
 For help getting started with Flutter, view our
 [online documentation](https://flutter.dev/docs), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
-

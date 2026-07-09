@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter_pty/flutter_pty.dart';
+import 'package:flutter_pty_new/flutter_pty_new.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String get shell {
@@ -157,5 +157,68 @@ void main() {
     expect(collector.output.contains('some random text'), isTrue);
 
     pty.kill();
+  });
+
+  test('Pty.foregroundPgid differs while foreground command runs', () async {
+    if (Platform.isWindows) {
+      return; // unsupported in Phase A
+    }
+    final pty = Pty.start(shell);
+    final collector = OutputCollector(pty);
+    await collector.waitForFirstChunk();
+
+    final idle = pty.foregroundPgid;
+    expect(idle, isNotNull);
+    expect(idle, greaterThan(0));
+
+    // Sleep keeps a child in the foreground process group.
+    // Poll briefly: bash job-control setup can take a few hundred ms.
+    pty.write('sleep 2\n'.toUtf8());
+    int? busy;
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      busy = pty.foregroundPgid;
+      if (busy != null && busy != idle) break;
+    }
+    expect(busy, isNotNull);
+    expect(busy, isNot(idle));
+
+    // SIGKILL: SIGTERM to the shell can hang while a foreground job is running.
+    pty.kill(ProcessSignal.sigkill);
+    await pty.exitCode;
+  });
+
+  test('Pty.isForegroundProcessRunning is false at idle prompt', () async {
+    if (Platform.isWindows) return;
+    final pty = Pty.start(shell);
+    final collector = OutputCollector(pty);
+    await collector.waitForFirstChunk();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(pty.isForegroundProcessRunning, isFalse);
+    pty.kill(ProcessSignal.sigkill);
+    await pty.exitCode;
+  });
+
+  test('Pty.isForegroundProcessRunning is true while sleep runs', () async {
+    if (Platform.isWindows) return;
+    final pty = Pty.start(shell);
+    final collector = OutputCollector(pty);
+    await collector.waitForFirstChunk();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(pty.isForegroundProcessRunning, isFalse);
+
+    pty.write('sleep 2\n'.toUtf8());
+    bool? busy;
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      busy = pty.isForegroundProcessRunning;
+      if (busy == true) break;
+    }
+    expect(busy, isTrue);
+
+    pty.kill(ProcessSignal.sigkill);
+    await pty.exitCode;
   });
 }
