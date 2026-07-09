@@ -51,7 +51,7 @@ Ship A → E first. B–D can follow in the same release train if A is stable.
 - Modify: `src/flutter_pty_win.c` (stub returns)
 - Test: `example/integration_test/flutter_pty_test.dart`
 
-- [ ] **Step 1: Add C declarations**
+- [x] **Step 1: Add C declarations**
 
 In `src/flutter_pty.h`, append:
 
@@ -62,7 +62,7 @@ FFI_PLUGIN_EXPORT int pty_get_master_fd(PtyHandle *handle);
 FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle);
 ```
 
-- [ ] **Step 2: Implement on Unix**
+- [x] **Step 2: Implement on Unix**
 
 In `src/flutter_pty_unix.c`:
 
@@ -84,7 +84,7 @@ FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle)
 
 Include `<unistd.h>` / `<termios.h>` if not already present (they are).
 
-- [ ] **Step 3: Stub on Windows**
+- [x] **Step 3: Stub on Windows**
 
 In `src/flutter_pty_win.c`:
 
@@ -102,7 +102,7 @@ FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle)
 }
 ```
 
-- [ ] **Step 4: Regenerate bindings**
+- [x] **Step 4: Regenerate bindings**
 
 Run:
 
@@ -113,7 +113,7 @@ dart run ffigen --config ffigen.yaml
 
 Expected: `lib/src/flutter_pty_bindings_generated.dart` contains `pty_get_master_fd` and `pty_get_foreground_pgid`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/flutter_pty.h src/flutter_pty_unix.c src/flutter_pty_win.c \
@@ -133,7 +133,7 @@ EOF
 - Modify: `lib/flutter_pty.dart`
 - Test: `example/integration_test/flutter_pty_test.dart`
 
-- [ ] **Step 1: Write failing integration test**
+- [x] **Step 1: Write failing integration test**
 
 Append to `example/integration_test/flutter_pty_test.dart`:
 
@@ -159,7 +159,7 @@ test('Pty.foregroundPgid differs while foreground command runs', () async {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run (Linux desktop):
 
@@ -171,7 +171,7 @@ flutter test integration_test/flutter_pty_test.dart \
 
 Expected: FAIL — `foregroundPgid` getter missing / compile error.
 
-- [ ] **Step 3: Implement Dart getters + poll stream**
+- [x] **Step 3: Implement Dart getters + poll stream**
 
 In `lib/flutter_pty.dart`, add:
 
@@ -218,7 +218,7 @@ In `lib/flutter_pty.dart`, add:
 
 Document the heuristic caveats in a dartdoc comment (job control off, interactive TUI that stays in shell pgid, Windows unsupported).
 
-- [ ] **Step 4: Re-run test**
+- [x] **Step 4: Re-run test**
 
 ```bash
 cd /home/hhoa/git/hhoa/flutter_pty/example
@@ -228,7 +228,7 @@ flutter test integration_test/flutter_pty_test.dart \
 
 Expected: PASS on Linux. On failure, check whether `bash` puts `sleep` in a new pgid (it should with job control); if flaky, use `sleep 5 & wait` alternatives or `stdbuf` — prefer a short C helper only if needed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/flutter_pty.dart example/integration_test/flutter_pty_test.dart
@@ -248,7 +248,7 @@ EOF
 - Modify: `src/flutter_pty_unix.c` (if needed)
 - Test: `example/integration_test/flutter_pty_test.dart`
 
-- [ ] **Step 1: Add idle-state test**
+- [x] **Step 1: Add idle-state test**
 
 ```dart
 test('Pty.isForegroundProcessRunning is false at idle prompt', () async {
@@ -262,7 +262,7 @@ test('Pty.isForegroundProcessRunning is false at idle prompt', () async {
 });
 ```
 
-- [ ] **Step 2: Fix comparison if shell pgid != pid**
+- [x] **Step 2: Fix comparison if shell pgid != pid**
 
 If tests show shell `pid` is not the process-group leader, store `shellPgid` at spawn time:
 
@@ -273,7 +273,7 @@ handle->shell_pgid = getpgid(pid); // parent side
 
 Expose `pty_get_shell_pgid` and compare `foregroundPgid != shellPgid` in Dart.
 
-- [ ] **Step 3: Document Android behavior**
+- [x] **Step 3: Document Android behavior**
 
 In `README.md`, add a short "Foreground detection" section:
 
@@ -281,7 +281,7 @@ In `README.md`, add a short "Foreground detection" section:
 - Unsupported on Windows in this release (`null`)
 - Heuristic only; toybox `sh` may lack job control → may always report idle
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add lib/flutter_pty.dart src/flutter_pty_unix.c src/flutter_pty.h \
@@ -651,9 +651,9 @@ Version policy:
 - After Phase A (+ optional E consumer): bump to **`0.5.0`** with A-only changelog.
 - After B–D land: bump to **`0.5.x` / `0.6.0`** with those bullets (do not pretend they shipped in the first 0.5.0 if they did not).
 
-- [ ] **Step 1: Bump version** for the slice actually shipping
+- [x] **Step 1: Bump version** for the slice actually shipping
 
-- [ ] **Step 2: CHANGELOG entry matching shipped tasks only**
+- [x] **Step 2: CHANGELOG entry matching shipped tasks only**
 
 Example for A-only:
 
@@ -663,7 +663,7 @@ Example for A-only:
   `foregroundProcessRunningChanges` (Unix/Android; Windows returns null).
 ```
 
-- [ ] **Step 3: Run full verification**
+- [x] **Step 3: Run full verification**
 
 ```bash
 cd /home/hhoa/git/hhoa/flutter_pty
