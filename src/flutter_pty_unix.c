@@ -22,6 +22,8 @@ typedef struct PtyHandle
 
     int pid;
 
+    int shell_pgid;
+
     pthread_mutex_t mutex;
 
     bool ackRead;
@@ -192,6 +194,23 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
     handle->ptm = ptm;
     handle->pid = pid;
+    /* forkpty's child becomes session/pgroup leader asynchronously; wait
+     * briefly so we don't capture the parent's pgid. */
+    {
+        int shell_pgid = pid;
+        for (int i = 0; i < 100; ++i) {
+            pid_t pgid = getpgid(pid);
+            if (pgid == pid) {
+                shell_pgid = (int)pgid;
+                break;
+            }
+            if (pgid < 0) {
+                break;
+            }
+            usleep(1000);
+        }
+        handle->shell_pgid = shell_pgid;
+    }
     pthread_mutex_init(&handle->mutex, NULL);
     handle->ackRead = options->ackRead;
 
@@ -248,4 +267,12 @@ FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle)
         return -1;
     }
     return (int)pgid;
+}
+
+FFI_PLUGIN_EXPORT int pty_get_shell_pgid(PtyHandle *handle)
+{
+    if (handle == NULL || handle->shell_pgid <= 0) {
+        return -1;
+    }
+    return handle->shell_pgid;
 }

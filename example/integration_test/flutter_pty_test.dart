@@ -188,4 +188,36 @@ void main() {
     pty.kill(ProcessSignal.sigkill);
     await pty.exitCode;
   });
+
+  test('Pty.isForegroundProcessRunning is false at idle prompt', () async {
+    if (Platform.isWindows) return;
+    final pty = Pty.start(shell);
+    final collector = OutputCollector(pty);
+    await collector.waitForFirstChunk();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(pty.isForegroundProcessRunning, isFalse);
+    pty.kill();
+  });
+
+  test('Pty.isForegroundProcessRunning is true while sleep runs', () async {
+    if (Platform.isWindows) return;
+    final pty = Pty.start(shell);
+    final collector = OutputCollector(pty);
+    await collector.waitForFirstChunk();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(pty.isForegroundProcessRunning, isFalse);
+
+    pty.write('sleep 2\n'.toUtf8());
+    bool? busy;
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      busy = pty.isForegroundProcessRunning;
+      if (busy == true) break;
+    }
+    expect(busy, isTrue);
+
+    pty.kill(ProcessSignal.sigkill);
+    await pty.exitCode;
+  });
 }

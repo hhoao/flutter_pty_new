@@ -54,4 +54,7 @@ FFI_PLUGIN_EXPORT int pty_get_master_fd(PtyHandle *handle);
 /** Foreground process group id for the PTY, or -1 on error / unsupported. */
 FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle);
 
+/** Shell process group id captured at spawn, or -1 if unset / unsupported. */
+FFI_PLUGIN_EXPORT int pty_get_shell_pgid(PtyHandle *handle);
+
 #endif

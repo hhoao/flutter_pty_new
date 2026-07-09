@@ -491,6 +491,21 @@ class FlutterPtyBindings {
           'pty_get_foreground_pgid');
   late final _pty_get_foreground_pgid = _pty_get_foreground_pgidPtr
       .asFunction<int Function(ffi.Pointer<PtyHandle>)>();
+
+  /// Shell process group id captured at spawn, or -1 if unset / unsupported.
+  int pty_get_shell_pgid(
+    ffi.Pointer<PtyHandle> handle,
+  ) {
+    return _pty_get_shell_pgid(
+      handle,
+    );
+  }
+
+  late final _pty_get_shell_pgidPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<PtyHandle>)>>(
+          'pty_get_shell_pgid');
+  late final _pty_get_shell_pgid =
+      _pty_get_shell_pgidPtr.asFunction<int Function(ffi.Pointer<PtyHandle>)>();
 }
 
 typedef Dart_PostCObject_Type = ffi.Pointer<

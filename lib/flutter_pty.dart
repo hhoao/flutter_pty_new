@@ -181,22 +181,27 @@ class Pty {
     return pgid < 0 ? null : pgid;
   }
 
+  /// Shell process group id captured at spawn, or `null` if unavailable.
+  int? get shellPgid {
+    final pgid = _bindings.pty_get_shell_pgid(_handle);
+    return pgid < 0 ? null : pgid;
+  }
+
   /// True when the foreground process group is not the shell's own group.
   ///
-  /// Provisional heuristic: compares `[foregroundPgid] != [pid]`, assuming the
-  /// shell is its process-group leader so its pgid equals [pid] (often true
-  /// after forkpty, not always). Task 3 will compare against a stored shell
-  /// pgid when `pid != pgid`.
+  /// Compares [foregroundPgid] to [shellPgid] (the process group recorded at
+  /// spawn). When a foreground job is running, the PTY's foreground pgid
+  /// differs from the shell's.
   ///
-  /// Returns `null` when the platform cannot answer (e.g. Windows Phase A).
+  /// Returns `null` when the platform cannot answer (e.g. Windows).
   ///
   /// Caveats: job control off, interactive TUIs that stay in the shell pgid,
   /// and Windows (unsupported) may not report accurately.
   bool? get isForegroundProcessRunning {
     final fg = foregroundPgid;
-    if (fg == null) return null;
-    // Shell child from forkpty is session/process-group leader in normal cases.
-    return fg != pid;
+    final shell = shellPgid;
+    if (fg == null || shell == null) return null;
+    return fg != shell;
   }
 
   /// Polls [isForegroundProcessRunning] every [interval].

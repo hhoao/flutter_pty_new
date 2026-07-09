@@ -31,6 +31,21 @@ pty.resize(30, 80);
 pty.kill();
 ```
 
+## Foreground detection
+
+On Linux, macOS, and Android, `Pty` can report whether a foreground job is
+running via POSIX `tcgetpgrp` on the master fd:
+
+- `masterFd` — POSIX master file descriptor
+- `foregroundPgid` — current foreground process group
+- `shellPgid` — shell process group captured at spawn
+- `isForegroundProcessRunning` — `true` when `foregroundPgid != shellPgid`
+- `foregroundProcessRunningChanges` — polls and emits on change
+
+This is a heuristic only. Shells without job control (for example toybox `sh`
+on some Android images) may always appear idle. Windows returns `null` for
+these APIs in this release (ConPTY has no `tcgetpgrp`).
+
 ---
 
 ## Project stucture
