@@ -1,0 +1,44 @@
+# Publish flutter_pty_new to pub.dev when a version tag is pushed or dispatched.
+# OIDC trust must be configured on pub.dev (Admin → Automated publishing).
+# See PUBLISHING.md for one-time setup.
+# Tag push via GITHUB_TOKEN (auto-tag) does not trigger on.push.tags; auto-tag
+# dispatches this workflow explicitly via workflow_dispatch.
+
+name: Publish to pub.dev
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v1.0.0). Leave empty to use github.ref."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish flutter_pty_new
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for pub.dev OIDC
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260
+
+      - uses: flutter-actions/setup-flutter@18c66a64fb6f6d3338c63cabbc5cd6da395e7f1d
+
+      - name: Install dependencies
+        run: dart pub get
+
+      - name: Publish - dry run
+        run: dart pub publish --dry-run
+
+      - name: Publish to pub.dev
+        run: dart pub publish -f
