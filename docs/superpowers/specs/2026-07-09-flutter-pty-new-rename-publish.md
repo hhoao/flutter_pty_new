@@ -25,7 +25,7 @@
 | GitHub repo | renamed to `hhoao/flutter_pty_new` | remotes/docs updated |
 | pub package | not on pub.dev as `flutter_pty_new` | `1.0.0` |
 | Upstream `flutter_pty` on pub.dev | TerminalStudio `0.4.2` | leave alone |
-| Feature work | Phase A on `feature/flutter-pty-optimization` | fold into rename + `1.0.0` |
+| Feature work | Phase A on `feature/flutter-pty-optimization` ([optimization spec](./2026-07-09-flutter-pty-optimization.md)) | fold into rename + `1.0.0` |
 | `flutter_alacritty` dep | `flutter_pty: ^0.4.0` (path WIP on feature branch) | `flutter_pty_new: ^1.0.0` |
 | Publish CI | alacritty has it; pty does not | both |
 
@@ -44,6 +44,7 @@ Apply consistently across the pty repo (worktree `feature/flutter-pty-optimizati
    - Keep entrypoint as `lib/flutter_pty.dart` *or* rename to `lib/flutter_pty_new.dart`.
    - **Decision:** rename entrypoint to `lib/flutter_pty_new.dart` and update all imports to `package:flutter_pty_new/flutter_pty_new.dart` for consistency. Optionally re-export from a short path later if needed — YAGNI for v1.
    - Native dylib load name in Dart (`_libName`) → `flutter_pty_new`.
+   - **Public Dart types stay the same** (`Pty`, etc.). “Consumer-facing identifiers” means package name, import URI, dylib/plugin IDs — not renaming the API classes.
 
 3. **Native / plugin identifiers**
    - Android: `group` / `namespace` / `settings.gradle` rootProject name
