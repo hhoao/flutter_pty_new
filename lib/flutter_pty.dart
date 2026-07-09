@@ -169,6 +169,48 @@ class Pty {
   /// The process id of the process running in the pseudo-terminal.
   int get pid => _bindings.pty_getpid(_handle);
 
+  /// POSIX master fd, or `null` on Windows / error.
+  int? get masterFd {
+    final fd = _bindings.pty_get_master_fd(_handle);
+    return fd < 0 ? null : fd;
+  }
+
+  /// Foreground process group id, or `null` if unavailable.
+  int? get foregroundPgid {
+    final pgid = _bindings.pty_get_foreground_pgid(_handle);
+    return pgid < 0 ? null : pgid;
+  }
+
+  /// True when the foreground process group is not the shell's own group.
+  ///
+  /// Heuristic: compares [foregroundPgid] to the shell [pid]'s process group.
+  /// Returns `null` when the platform cannot answer (e.g. Windows Phase A).
+  ///
+  /// Caveats: job control off, interactive TUIs that stay in the shell pgid,
+  /// and Windows (unsupported) may not report accurately.
+  bool? get isForegroundProcessRunning {
+    final fg = foregroundPgid;
+    if (fg == null) return null;
+    // Shell child from forkpty is session/process-group leader in normal cases.
+    return fg != pid;
+  }
+
+  /// Polls [isForegroundProcessRunning] every [interval].
+  /// Emits only on change. Cancelling the subscription stops the timer.
+  Stream<bool> foregroundProcessRunningChanges({
+    Duration interval = const Duration(milliseconds: 150),
+  }) async* {
+    bool? last;
+    while (true) {
+      final current = isForegroundProcessRunning;
+      if (current != null && current != last) {
+        last = current;
+        yield current;
+      }
+      await Future<void>.delayed(interval);
+    }
+  }
+
   /// Write data to the pseudo-terminal.
   void write(Uint8List data) {
     final buf = malloc<Int8>(data.length);

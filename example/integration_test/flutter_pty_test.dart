@@ -158,4 +158,34 @@ void main() {
 
     pty.kill();
   });
+
+  test('Pty.foregroundPgid differs while foreground command runs', () async {
+    if (Platform.isWindows) {
+      return; // unsupported in Phase A
+    }
+    final pty = Pty.start(shell);
+    final collector = OutputCollector(pty);
+    await collector.waitForFirstChunk();
+
+    final idle = pty.foregroundPgid;
+    expect(idle, isNotNull);
+    expect(idle, greaterThan(0));
+
+    // Sleep keeps a child in the foreground process group.
+    // Poll briefly: bash job-control setup can take a few hundred ms.
+    pty.write('sleep 2\n'.toUtf8());
+    int? busy;
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      busy = pty.foregroundPgid;
+      if (busy != null && busy != idle) break;
+    }
+    expect(busy, isNotNull);
+    expect(busy, isNot(idle));
+
+    // SIGKILL: SIGTERM to the shell can hang while a foreground job is running.
+    pty.kill(ProcessSignal.sigkill);
+    await pty.exitCode;
+  });
 }
