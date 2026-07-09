@@ -462,6 +462,35 @@ class FlutterPtyBindings {
           'pty_error');
   late final _pty_error =
       _pty_errorPtr.asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  int pty_get_master_fd(
+    ffi.Pointer<PtyHandle> handle,
+  ) {
+    return _pty_get_master_fd(
+      handle,
+    );
+  }
+
+  late final _pty_get_master_fdPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<PtyHandle>)>>(
+          'pty_get_master_fd');
+  late final _pty_get_master_fd =
+      _pty_get_master_fdPtr.asFunction<int Function(ffi.Pointer<PtyHandle>)>();
+
+  /// Foreground process group id for the PTY, or -1 on error / unsupported.
+  int pty_get_foreground_pgid(
+    ffi.Pointer<PtyHandle> handle,
+  ) {
+    return _pty_get_foreground_pgid(
+      handle,
+    );
+  }
+
+  late final _pty_get_foreground_pgidPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<PtyHandle>)>>(
+          'pty_get_foreground_pgid');
+  late final _pty_get_foreground_pgid = _pty_get_foreground_pgidPtr
+      .asFunction<int Function(ffi.Pointer<PtyHandle>)>();
 }
 
 typedef Dart_PostCObject_Type = ffi.Pointer<

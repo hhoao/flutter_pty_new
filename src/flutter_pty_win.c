@@ -513,3 +513,15 @@ FFI_PLUGIN_EXPORT char *pty_error()
 {
     return error_message;
 }
+
+FFI_PLUGIN_EXPORT int pty_get_master_fd(PtyHandle *handle)
+{
+    (void)handle;
+    return -1; /* no POSIX fd */
+}
+
+FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle)
+{
+    (void)handle;
+    return -1; /* ConPTY has no tcgetpgrp; Phase A documents unsupported */
+}

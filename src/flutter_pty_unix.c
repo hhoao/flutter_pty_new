@@ -235,3 +235,17 @@ FFI_PLUGIN_EXPORT char *pty_error(void)
 {
     return NULL;
 }
+
+FFI_PLUGIN_EXPORT int pty_get_master_fd(PtyHandle *handle)
+{
+    return handle->ptm;
+}
+
+FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle)
+{
+    pid_t pgid = tcgetpgrp(handle->ptm);
+    if (pgid < 0) {
+        return -1;
+    }
+    return (int)pgid;
+}
