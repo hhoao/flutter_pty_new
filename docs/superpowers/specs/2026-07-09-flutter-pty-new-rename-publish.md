@@ -108,7 +108,7 @@ rust_lib_flutter_alacritty → flutter_pty_new → flutter_alacritty
 |------|------------|
 | pub.dev name `flutter_pty_new` taken later | Claim ASAP with first publish |
 | OIDC not configured → tag publish fails | Document setup; dry-run locally first |
-| Missed rename in native build | `flutter pub get` + example build/test on Linux |
+| Missed rename in native build | `flutter pub get` + example build/test on Linux; smoke Android/macOS/Windows plugin load if CI matrix allows |
 | alacritty publishes before pty_new on pub.dev | Hard fail in publish workflow |
 | Import churn for hosts | Document migration: `flutter_pty` → `flutter_pty_new` |
 
