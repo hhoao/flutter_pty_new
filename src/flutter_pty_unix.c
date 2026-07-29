@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include <pthread.h>
 #include <unistd.h>
@@ -210,7 +211,27 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
 FFI_PLUGIN_EXPORT void pty_write(PtyHandle *handle, char *buffer, int length)
 {
-    write(handle->ptm, buffer, length);
+    // PTY masters behave like pipes: large writes (e.g. 20k+ char bracketed
+    // pastes) may return short. Dropping the remainder leaves an unclosed
+    // \x1b[200~...\x1b[201~ sequence and fullscreen paste ACK fails.
+    int written = 0;
+    while (written < length)
+    {
+        ssize_t n = write(handle->ptm, buffer + written, (size_t)(length - written));
+        if (n < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            break;
+        }
+        if (n == 0)
+        {
+            break;
+        }
+        written += (int)n;
+    }
 }
 
 FFI_PLUGIN_EXPORT void pty_ack_read(PtyHandle *handle)

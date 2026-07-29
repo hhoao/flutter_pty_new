@@ -477,13 +477,26 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
 FFI_PLUGIN_EXPORT void pty_write(PtyHandle *handle, char *buffer, int length)
 {
-    DWORD bytesWritten;
-
-    WriteFile(handle->inputWriteSide, buffer, length, &bytesWritten, NULL);
+    // ConPTY pipes can short-write large bracketed pastes the same way Unix
+    // PTYs do; loop until the full buffer (including paste terminators) is out.
+    int written = 0;
+    while (written < length)
+    {
+        DWORD bytesWritten = 0;
+        BOOL ok = WriteFile(
+            handle->inputWriteSide,
+            buffer + written,
+            (DWORD)(length - written),
+            &bytesWritten,
+            NULL);
+        if (!ok || bytesWritten == 0)
+        {
+            break;
+        }
+        written += (int)bytesWritten;
+    }
 
     FlushFileBuffers(handle->inputWriteSide);
-
-    return;
 }
 
 FFI_PLUGIN_EXPORT void pty_ack_read(PtyHandle *handle)
