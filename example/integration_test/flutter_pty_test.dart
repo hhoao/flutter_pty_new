@@ -67,6 +67,7 @@ void main() {
     expect(await pty.output.first, isNotEmpty);
 
     pty.kill();
+    pty.dispose();
   });
 
   test('Pty.kill works', () async {
@@ -75,6 +76,7 @@ void main() {
 
     pty.kill();
     expect(await pty.exitCode, isNotNull);
+    pty.dispose();
   });
 
   test('Pty.start can set working directory', () async {
@@ -92,6 +94,7 @@ void main() {
     await collector.waitForOutput(tempDir.path);
 
     pty.kill();
+    pty.dispose();
   });
 
   test('Pty.start can set environment variables', () async {
@@ -108,6 +111,7 @@ void main() {
     await collector.waitForOutput('test');
 
     pty.kill();
+    pty.dispose();
   });
 
   test('Pty.start can set multiple environment variables', () async {
@@ -130,6 +134,7 @@ void main() {
     await collector.waitForOutput('test1 test2');
 
     pty.kill();
+    pty.dispose();
   });
 
   test('Pty.start can set ack read mode', () async {
@@ -153,10 +158,28 @@ void main() {
     expect(collector.output.contains('some random text'), isFalse);
 
     pty.ackRead();
-    await Future.delayed(const Duration(milliseconds: 100));
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (!collector.output.contains('some random text') &&
+        DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      pty.ackRead();
+    }
     expect(collector.output.contains('some random text'), isTrue);
 
     pty.kill();
+    pty.dispose();
+  });
+
+  test('Pty.dispose releases an ack-blocked reader', () async {
+    final arguments = Platform.isWindows
+        ? const ['/c', 'echo ready & ping -n 30 127.0.0.1 >nul']
+        : const ['-c', 'printf ready; exec sleep 30'];
+    final pty = Pty.start(shell, arguments: arguments, ackRead: true);
+
+    await pty.output.first.timeout(const Duration(seconds: 5));
+    pty.kill();
+    pty.dispose();
+    await pty.exitCode.timeout(const Duration(seconds: 5));
   });
 
   test('Pty.foregroundPgid differs while foreground command runs', () async {
@@ -187,6 +210,7 @@ void main() {
     // SIGKILL: SIGTERM to the shell can hang while a foreground job is running.
     pty.kill(ProcessSignal.sigkill);
     await pty.exitCode;
+    pty.dispose();
   });
 
   test('Pty.isForegroundProcessRunning is false at idle prompt', () async {
@@ -198,6 +222,7 @@ void main() {
     expect(pty.isForegroundProcessRunning, isFalse);
     pty.kill(ProcessSignal.sigkill);
     await pty.exitCode;
+    pty.dispose();
   });
 
   test('Pty.isForegroundProcessRunning is true while sleep runs', () async {
@@ -220,5 +245,6 @@ void main() {
 
     pty.kill(ProcessSignal.sigkill);
     await pty.exitCode;
+    pty.dispose();
   });
 }

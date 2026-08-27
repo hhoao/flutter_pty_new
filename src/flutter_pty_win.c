@@ -188,7 +188,8 @@ static LPWSTR build_working_directory(char *working_directory)
 
     while (working_directory[i] != 0)
     {
-        working_directory_block[i] = (WCHAR)working_directory[i++];
+        working_directory_block[i] = (WCHAR)working_directory[i];
+        i++;
     }
 
     working_directory_block[i] = 0;
@@ -203,6 +204,8 @@ typedef struct ReadLoopOptions
     Dart_Port port;
 
     HANDLE hMutex;
+
+    HANDLE stopEvent;
 
     BOOL ackRead;
 
@@ -220,7 +223,38 @@ static DWORD WINAPI read_loop(LPVOID arg)
 
         if (options->ackRead)
         {
-            WaitForSingleObject(options->hMutex, INFINITE);
+            HANDLE wait_handles[] = {options->stopEvent, options->hMutex};
+            DWORD wait_result = WaitForMultipleObjects(
+                2, wait_handles, FALSE, INFINITE);
+            if (wait_result != WAIT_OBJECT_0 + 1)
+            {
+                break;
+            }
+        }
+        else if (WaitForSingleObject(options->stopEvent, 0) == WAIT_OBJECT_0)
+        {
+            break;
+        }
+
+        /* Anonymous pipe reads can block indefinitely. Poll for available
+         * data instead, so the stop event always wins during teardown and
+         * there is no close-vs-ReadFile race with the owner thread. */
+        DWORD available = 0;
+        while (available == 0)
+        {
+            if (WaitForSingleObject(options->stopEvent, 20) == WAIT_OBJECT_0)
+            {
+                goto done;
+            }
+            if (!PeekNamedPipe(options->fd, NULL, 0, NULL, &available, NULL))
+            {
+                goto done;
+            }
+        }
+
+        if (WaitForSingleObject(options->stopEvent, 0) == WAIT_OBJECT_0)
+        {
+            break;
         }
 
         BOOL ok = ReadFile(options->fd, buffer, sizeof(buffer), &readlen, NULL);
@@ -244,16 +278,25 @@ static DWORD WINAPI read_loop(LPVOID arg)
         Dart_PostCObject_DL(options->port, &result);
     }
 
+done:
+    free(options);
     return 0;
 }
 
-static void start_read_thread(HANDLE fd, Dart_Port port, HANDLE mutex, BOOL ackRead)
+static HANDLE start_read_thread(HANDLE fd, Dart_Port port, HANDLE mutex,
+                                HANDLE stopEvent, BOOL ackRead)
 {
     ReadLoopOptions *options = malloc(sizeof(ReadLoopOptions));
+
+    if (options == NULL)
+    {
+        return NULL;
+    }
 
     options->fd = fd;
     options->port = port;
     options->hMutex = mutex;
+    options->stopEvent = stopEvent;
     options->ackRead = ackRead;
 
     DWORD thread_id;
@@ -263,7 +306,10 @@ static void start_read_thread(HANDLE fd, Dart_Port port, HANDLE mutex, BOOL ackR
     if (thread == NULL)
     {
         free(options);
+        return NULL;
     }
+
+    return thread;
 }
 
 typedef struct WaitExitOptions
@@ -271,8 +317,6 @@ typedef struct WaitExitOptions
     HANDLE pid;
 
     Dart_Port port;
-
-    HANDLE hMutex;
 } WaitExitOptions;
 
 static DWORD WINAPI wait_exit_thread(LPVOID arg)
@@ -286,20 +330,25 @@ static DWORD WINAPI wait_exit_thread(LPVOID arg)
     GetExitCodeProcess(options->pid, &exit_code);
 
     CloseHandle(options->pid);
-    CloseHandle(options->hMutex);
 
     Dart_PostInteger_DL(options->port, exit_code);
+
+    free(options);
 
     return 0;
 }
 
-static void start_wait_exit_thread(HANDLE pid, Dart_Port port, HANDLE mutex)
+static BOOL start_wait_exit_thread(HANDLE pid, Dart_Port port)
 {
     WaitExitOptions *options = malloc(sizeof(WaitExitOptions));
 
+    if (options == NULL)
+    {
+        return FALSE;
+    }
+
     options->pid = pid;
     options->port = port;
-    options->hMutex = mutex;
 
     DWORD thread_id;
 
@@ -308,14 +357,18 @@ static void start_wait_exit_thread(HANDLE pid, Dart_Port port, HANDLE mutex)
     if (thread == NULL)
     {
         free(options);
+        return FALSE;
     }
+
+    CloseHandle(thread);
+    return TRUE;
 }
 
 typedef struct PtyHandle
 {
-    PHANDLE inputWriteSide;
+    HANDLE inputWriteSide;
 
-    PHANDLE outputReadSide;
+    HANDLE outputReadSide;
 
     HPCON hPty;
 
@@ -324,6 +377,10 @@ typedef struct PtyHandle
     BOOL ackRead;
 
     HANDLE hMutex;
+
+    HANDLE stopEvent;
+
+    HANDLE readThread;
 
 } PtyHandle;
 
@@ -345,6 +402,8 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
     if (!CreatePipe(&outputReadSide, &outputWriteSide, NULL, 0))
     {
+        CloseHandle(inputReadSide);
+        CloseHandle(inputWriteSide);
         error_message = "Failed to create output pipe";
         return NULL;
     }
@@ -360,11 +419,22 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
     if (FAILED(result))
     {
+        CloseHandle(inputReadSide);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        CloseHandle(outputWriteSide);
         error_message = "Failed to create pseudo console";
         return NULL;
     }
 
-    STARTUPINFOEX startupInfo;
+    /* ConPTY duplicates these ends internally; the parent only retains the
+     * write end for input and read end for output. */
+    CloseHandle(inputReadSide);
+    inputReadSide = NULL;
+    CloseHandle(outputWriteSide);
+    outputWriteSide = NULL;
+
+    STARTUPINFOEXW startupInfo;
 
     ZeroMemory(&startupInfo, sizeof(startupInfo));
     startupInfo.StartupInfo.cb = sizeof(startupInfo);
@@ -378,10 +448,23 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     InitializeProcThreadAttributeList(NULL, 1, 0, &bytesRequired);
     startupInfo.lpAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)malloc(bytesRequired);
 
+    if (startupInfo.lpAttributeList == NULL)
+    {
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
+        error_message = "Failed to allocate proc thread attribute list";
+        return NULL;
+    }
+
     BOOL ok = InitializeProcThreadAttributeList(startupInfo.lpAttributeList, 1, 0, &bytesRequired);
 
     if (!ok)
     {
+        free(startupInfo.lpAttributeList);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
         error_message = "Failed to initialize proc thread attribute list";
         return NULL;
     }
@@ -396,6 +479,11 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 
     if (!ok)
     {
+        DeleteProcThreadAttributeList(startupInfo.lpAttributeList);
+        free(startupInfo.lpAttributeList);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
         error_message = "Failed to update proc thread attribute list";
         return NULL;
     }
@@ -435,17 +523,21 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
         free(working_directory);
     }
 
+    DeleteProcThreadAttributeList(startupInfo.lpAttributeList);
+    free(startupInfo.lpAttributeList);
+
     if (!ok)
     {
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
         error_message = "Failed to create process";
         DWORD error = GetLastError();
-        printf("error no: %d\n", error);
+        printf("error no: %lu\n", (unsigned long)error);
         return NULL;
     }
 
-    // free(startupInfo.lpAttributeList);
-
-    // CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hThread);
 
     HANDLE mutex = CreateSemaphore(
         NULL, // default security attributes
@@ -453,14 +545,45 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
         1,    // maximum count
         NULL);
 
-    start_read_thread(outputReadSide, options->stdout_port, mutex, options->ackRead);
+    if (mutex == NULL)
+    {
+        TerminateProcess(processInfo.hProcess, 1);
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
+        error_message = "Failed to create PTY mutex";
+        return NULL;
+    }
 
-    start_wait_exit_thread(processInfo.hProcess, options->exit_port, mutex);
+    HANDLE stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+    if (stopEvent == NULL)
+    {
+        CloseHandle(mutex);
+        TerminateProcess(processInfo.hProcess, 1);
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
+        error_message = "Failed to create PTY stop event";
+        return NULL;
+    }
 
     PtyHandle *pty = malloc(sizeof(PtyHandle));
 
     if (pty == NULL)
     {
+        CloseHandle(stopEvent);
+        CloseHandle(mutex);
+        TerminateProcess(processInfo.hProcess, 1);
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
         error_message = "Failed to allocate pty handle";
         return NULL;
     }
@@ -471,6 +594,37 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
     pty->dwProcessId = processInfo.dwProcessId;
     pty->ackRead = options->ackRead;
     pty->hMutex = mutex;
+    pty->stopEvent = stopEvent;
+    pty->readThread = NULL;
+
+    pty->readThread = start_read_thread(outputReadSide, options->stdout_port,
+                                        mutex, stopEvent, options->ackRead);
+    if (pty->readThread == NULL)
+    {
+        CloseHandle(stopEvent);
+        CloseHandle(mutex);
+        TerminateProcess(processInfo.hProcess, 1);
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(inputWriteSide);
+        CloseHandle(outputReadSide);
+        ClosePseudoConsole(hPty);
+        free(pty);
+        error_message = "Failed to start PTY reader";
+        return NULL;
+    }
+
+    if (!start_wait_exit_thread(processInfo.hProcess, options->exit_port))
+    {
+        /* The reader owns no process handle, so terminate and reap it here;
+         * pty_close will then stop the reader and release its PTY resources. */
+        TerminateProcess(processInfo.hProcess, 1);
+        WaitForSingleObject(processInfo.hProcess, INFINITE);
+        pty_close(pty);
+        CloseHandle(processInfo.hProcess);
+        error_message = "Failed to start PTY exit watcher";
+        return NULL;
+    }
 
     return pty;
 }
@@ -499,9 +653,52 @@ FFI_PLUGIN_EXPORT void pty_write(PtyHandle *handle, char *buffer, int length)
     FlushFileBuffers(handle->inputWriteSide);
 }
 
+FFI_PLUGIN_EXPORT void pty_close(PtyHandle *handle)
+{
+    if (handle == NULL)
+    {
+        return;
+    }
+
+    /* Wake both the ACK wait and the output polling loop before releasing the
+     * handles they use. The reader is joined before any of those handles are
+     * closed. */
+    if (handle->stopEvent != NULL)
+    {
+        SetEvent(handle->stopEvent);
+    }
+    if (handle->readThread != NULL)
+    {
+        WaitForSingleObject(handle->readThread, INFINITE);
+        CloseHandle(handle->readThread);
+        handle->readThread = NULL;
+    }
+    if (handle->inputWriteSide != NULL)
+    {
+        CloseHandle(handle->inputWriteSide);
+    }
+    if (handle->outputReadSide != NULL)
+    {
+        CloseHandle(handle->outputReadSide);
+    }
+    if (handle->hPty != NULL)
+    {
+        ClosePseudoConsole(handle->hPty);
+    }
+    if (handle->hMutex != NULL)
+    {
+        CloseHandle(handle->hMutex);
+    }
+    if (handle->stopEvent != NULL)
+    {
+        CloseHandle(handle->stopEvent);
+    }
+    free(handle);
+}
+
 FFI_PLUGIN_EXPORT void pty_ack_read(PtyHandle *handle)
 {
-    if (handle->ackRead)
+    if (handle != NULL && handle->ackRead && handle->hMutex != NULL)
     {
         ReleaseSemaphore(handle->hMutex, 1, NULL);
     }

@@ -82,6 +82,18 @@ class _MyAppState extends State<MyApp> {
     textEdit.clear();
     focusNode.requestFocus();
   }
+
+  @override
+  void dispose() {
+    try {
+      pty.kill();
+    } finally {
+      pty.dispose();
+    }
+    textEdit.dispose();
+    focusNode.dispose();
+    super.dispose();
+  }
 }
 
 String get shell {

@@ -39,6 +39,9 @@ typedef struct PtyHandle PtyHandle;
 
 FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options);
 
+/** Closes the PTY and releases its native resources. */
+FFI_PLUGIN_EXPORT void pty_close(PtyHandle *handle);
+
 FFI_PLUGIN_EXPORT void pty_write(PtyHandle *handle, char *buffer, int length);
 
 FFI_PLUGIN_EXPORT void pty_ack_read(PtyHandle *handle);
@@ -56,5 +59,10 @@ FFI_PLUGIN_EXPORT int pty_get_foreground_pgid(PtyHandle *handle);
 
 /** Shell process group id captured at spawn, or -1 if unset / unsupported. */
 FFI_PLUGIN_EXPORT int pty_get_shell_pgid(PtyHandle *handle);
+
+/** Releases the native resources of the PTY: closes the master fd, stops the
+ *  read thread and frees the handle. Must be called at most once per handle;
+ *  a NULL handle is a no-op. */
+FFI_PLUGIN_EXPORT void pty_close(PtyHandle *handle);
 
 #endif

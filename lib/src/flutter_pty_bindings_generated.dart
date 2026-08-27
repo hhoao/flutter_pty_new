@@ -387,6 +387,21 @@ class FlutterPtyBindings {
   late final _pty_create = _pty_createPtr
       .asFunction<ffi.Pointer<PtyHandle> Function(ffi.Pointer<PtyOptions>)>();
 
+  /// Closes the PTY and releases its native resources.
+  void pty_close(
+    ffi.Pointer<PtyHandle> handle,
+  ) {
+    return _pty_close(
+      handle,
+    );
+  }
+
+  late final _pty_closePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<PtyHandle>)>>(
+          'pty_close');
+  late final _pty_close =
+      _pty_closePtr.asFunction<void Function(ffi.Pointer<PtyHandle>)>();
+
   void pty_write(
     ffi.Pointer<PtyHandle> handle,
     ffi.Pointer<ffi.Char> buffer,

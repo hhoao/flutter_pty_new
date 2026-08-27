@@ -22,6 +22,10 @@ final DynamicLibrary _dylib = () {
   throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
 }();
 
+final _ptyFinalizer = NativeFinalizer(
+  _dylib.lookup<NativeFunction<Void Function(Pointer<Void>)>>('pty_close'),
+);
+
 final _bindings = FlutterPtyBindings(_dylib);
 
 final _init = () {
@@ -37,7 +41,7 @@ void _ensureInitialized() {
 /// Pty represents a process running in a pseudo-terminal.
 ///
 /// To create a Pty, use [Pty.start].
-class Pty {
+class Pty implements Finalizable {
   final String executable;
 
   final List<String> arguments;
@@ -85,19 +89,19 @@ class Pty {
 
     // build argv
     final argv = calloc<Pointer<Utf8>>(arguments.length + 2);
-    argv.elementAt(0).value = executable.toNativeUtf8();
+    argv[0] = executable.toNativeUtf8();
     for (var i = 0; i < arguments.length; i++) {
-      argv.elementAt(i + 1).value = arguments[i].toNativeUtf8();
+      argv[i + 1] = arguments[i].toNativeUtf8();
     }
-    argv.elementAt(arguments.length + 1).value = nullptr;
+    argv[arguments.length + 1] = nullptr;
 
     //build env
     final envp = calloc<Pointer<Utf8>>(effectiveEnv.length + 1);
     for (var i = 0; i < effectiveEnv.length; i++) {
       final entry = effectiveEnv.entries.elementAt(i);
-      envp.elementAt(i).value = '${entry.key}=${entry.value}'.toNativeUtf8();
+      envp[i] = '${entry.key}=${entry.value}'.toNativeUtf8();
     }
-    envp.elementAt(effectiveEnv.length).value = nullptr;
+    envp[effectiveEnv.length] = nullptr;
 
     final options = calloc<PtyOptions>();
     options.ref.rows = rows;
@@ -115,13 +119,28 @@ class Pty {
       options.ref.working_directory = nullptr;
     }
 
-    _handle = _bindings.pty_create(options);
+    final nativeHandle = _bindings.pty_create(options);
 
+    calloc.free(options.ref.executable);
+    if (options.ref.working_directory != nullptr) {
+      calloc.free(options.ref.working_directory);
+    }
+    _freeNativeStringArray(argv, arguments.length + 1);
+    _freeNativeStringArray(envp, effectiveEnv.length);
     calloc.free(options);
+
+    _handle = nativeHandle;
 
     if (_handle == nullptr) {
       throw StateError('Failed to create PTY: ${_getPtyError()}');
     }
+
+    _ptyFinalizer.attach(
+      this,
+      _handle.cast(),
+      detach: this,
+      externalSize: 4096,
+    );
 
     _exitPort.first.then(_onExitCode);
   }
@@ -133,6 +152,8 @@ class Pty {
   final _exitCodeCompleter = Completer<int>();
 
   late final Pointer<PtyHandle> _handle;
+
+  bool _disposed = false;
 
   /// The output stream from the pseudo-terminal. Note that pseudo-terminals
   /// do not distinguish between stdout and stderr.
@@ -167,22 +188,28 @@ class Pty {
   Future<int> get exitCode => _exitCodeCompleter.future;
 
   /// The process id of the process running in the pseudo-terminal.
-  int get pid => _bindings.pty_getpid(_handle);
+  int get pid {
+    _ensureOpen();
+    return _bindings.pty_getpid(_handle);
+  }
 
   /// POSIX master fd, or `null` on Windows / error.
   int? get masterFd {
+    _ensureOpen();
     final fd = _bindings.pty_get_master_fd(_handle);
     return fd < 0 ? null : fd;
   }
 
   /// Foreground process group id, or `null` if unavailable.
   int? get foregroundPgid {
+    _ensureOpen();
     final pgid = _bindings.pty_get_foreground_pgid(_handle);
     return pgid < 0 ? null : pgid;
   }
 
   /// Shell process group id captured at spawn, or `null` if unavailable.
   int? get shellPgid {
+    _ensureOpen();
     final pgid = _bindings.pty_get_shell_pgid(_handle);
     return pgid < 0 ? null : pgid;
   }
@@ -210,7 +237,7 @@ class Pty {
     Duration interval = const Duration(milliseconds: 150),
   }) async* {
     bool? last;
-    while (true) {
+    while (!_disposed) {
       final current = isForegroundProcessRunning;
       if (current != null && current != last) {
         last = current;
@@ -222,14 +249,19 @@ class Pty {
 
   /// Write data to the pseudo-terminal.
   void write(Uint8List data) {
+    _ensureOpen();
     final buf = malloc<Int8>(data.length);
-    buf.asTypedList(data.length).setAll(0, data);
-    _bindings.pty_write(_handle, buf.cast(), data.length);
-    malloc.free(buf);
+    try {
+      buf.asTypedList(data.length).setAll(0, data);
+      _bindings.pty_write(_handle, buf.cast(), data.length);
+    } finally {
+      malloc.free(buf);
+    }
   }
 
   /// Resize the pseudo-terminal.
   void resize(int rows, int cols) {
+    _ensureOpen();
     _bindings.pty_resize(_handle, rows, cols);
   }
 
@@ -239,6 +271,7 @@ class Pty {
   /// Linux and OS X. The default signal is [ProcessSignal.sigterm]
   /// which will normally terminate the process.
   bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
+    _ensureOpen();
     return Process.killPid(pid, signal);
   }
 
@@ -246,7 +279,22 @@ class Pty {
   /// This is needed when ackRead is set to true as the pty will wait for this signal to happen
   /// before any additional data is sent.
   void ackRead() {
+    _ensureOpen();
     _bindings.pty_ack_read(_handle);
+  }
+
+  /// Releases native resources associated with this PTY.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _ptyFinalizer.detach(this);
+    _bindings.pty_close(_handle);
+  }
+
+  void _ensureOpen() {
+    if (_disposed) {
+      throw StateError('Pty has been disposed');
+    }
   }
 
   void _onExitCode(dynamic exitCode) {
@@ -264,4 +312,15 @@ String? _getPtyError() {
   }
 
   return error.cast<Utf8>().toDartString();
+}
+
+void _freeNativeStringArray(
+  Pointer<Pointer<Utf8>> values,
+  int length,
+) {
+  for (var i = 0; i < length; i++) {
+    final value = values[i];
+    if (value != nullptr) calloc.free(value);
+  }
+  calloc.free(values);
 }

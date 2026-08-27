@@ -29,6 +29,7 @@ pty.write(Utf8Encoder().convert('ls -al\n'));
 pty.resize(30, 80);
 
 pty.kill();
+pty.dispose();
 ```
 
 ## Foreground detection

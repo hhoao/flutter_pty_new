@@ -25,6 +25,7 @@ pid_t pty_forkpty(
 
     if (grantpt(ptm) || unlockpt(ptm))
     {
+        close(ptm);
         return -1;
     }
 
@@ -32,14 +33,20 @@ pid_t pty_forkpty(
 
     if ((devname = ptsname(ptm)) == NULL)
     {
+        close(ptm);
         return -1;
     }
 
     int pts = open(devname, O_RDWR | O_NOCTTY);
     if (pts < 0)
     {
+        close(ptm);
         return -1;
     }
+
+    /* The slave must not survive exec in the child beyond the dup2 below,
+     * and must never leak into other children spawned later by the parent. */
+    fcntl(pts, F_SETFD, FD_CLOEXEC);
 
     if (termp)
     {
@@ -55,6 +62,8 @@ pid_t pty_forkpty(
 
     if (pid < 0)
     {
+        close(ptm);
+        close(pts);
         return -1;
     }
 
@@ -79,6 +88,13 @@ pid_t pty_forkpty(
         if (slave)
         {
             *slave = pts;
+        }
+        else
+        {
+            /* Caller does not want the slave: close it here. Leaving it open
+             * keeps the pair alive forever (no EOF on master) and leaks one
+             * non-CLOEXEC-protected fd into every PTY spawned afterwards. */
+            close(pts);
         }
     }
 
