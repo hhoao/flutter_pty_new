@@ -386,6 +386,9 @@ typedef struct PtyHandle
 
 char *error_message = NULL;
 
+/* Backing storage for messages formatted with runtime error codes. */
+static char error_message_buffer[128];
+
 FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
 {
     HANDLE inputReadSide = NULL;
@@ -531,9 +534,13 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(PtyOptions *options)
         CloseHandle(inputWriteSide);
         CloseHandle(outputReadSide);
         ClosePseudoConsole(hPty);
-        error_message = "Failed to create process";
+        /* Surface the Win32 code: GUI parents cannot see printf output, and
+         * "Failed to create process" alone gives no diagnostic foothold. */
         DWORD error = GetLastError();
-        printf("error no: %lu\n", (unsigned long)error);
+        snprintf(error_message_buffer, sizeof(error_message_buffer),
+                 "Failed to create process (Win32 error %lu)",
+                 (unsigned long)error);
+        error_message = error_message_buffer;
         return NULL;
     }
 
